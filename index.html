@@ -1,0 +1,572 @@
+<head>
+    <style>
+        #container {
+            width: 100%;
+            margin-top: 100px;
+            text-align: center;
+        }
+        #game {
+            display: inline-block;
+            background: #eee;
+            
+            box-shadow: 3px 3px 1px rgba(0, 0, 0, 0.15)
+        }
+    </style>
+</head>
+<div id="container">
+    <canvas id="game" width="1024" height="512"></canvas>
+</div>
+
+
+<script>
+    var canvas = document.getElementById("game");
+    canvas.width = 1024; 
+    canvas.height = 512;
+    var ctx = canvas.getContext("2d");
+
+
+    var start = false;
+    var FPS = 20;
+    var pups = 0;
+    var speed = 1;
+    var score = 0;
+
+    // Initialization
+
+    
+
+    // Helpers
+
+    function seconds_to_frames(seconds) {
+        return seconds * FPS;
+    }
+
+    function no_direction_press() {
+        return !press_up && !press_down && !press_right && !press_left
+    }
+
+    function collision(ax, ay, aw, ah, bx, by, bw, bh) {
+        return ax < bx + bw &&
+                ax + aw > bx &&
+                ay < by + bh &&
+                ah + ay > by;
+    }
+
+    function reset() {
+        player.x = canvas.width/2 - 32;
+        player.y = canvas.height/2 - 32;
+        player.s = 4;
+        player.pan = 0;
+        player.anim = 15;
+
+        pups = 0;
+        speed = 1;
+        score = 0;
+
+        max_dogs = 6;
+        max_enemys = 1;
+        max_powerups = 1;
+
+        dogs = [];
+        enemys = [];
+        powerups = [];
+    }
+    
+    
+    // Objects
+
+    var player = {
+        anim: 15,
+        x: canvas.width/2 - 32,
+        y: canvas.height/2 - 32,
+        w: 32,
+        h: 32,
+        s: 4,
+        pan: 0
+    }
+
+    var dogs = [];
+    var max_dogs = 6;
+    function Dog() {
+        this.w = 32;
+        this.h = 32;
+        this.x = (Math.random() * (canvas.width - this.w));
+        this.y = (Math.random() * (canvas.height - this.h));
+        this.s = (Math.round(Math.random()) * 2 - 1) * 2;        
+    }
+
+    var enemys = [];
+    var max_enemys = 1;
+    function Enemy() {
+        this.w = 72;
+        this.h = 72;
+        this.x = (Math.random() * canvas.width - this.w)/2;
+        this.y = (Math.random() * canvas.height - this.h)/2;
+        this.sx = 1;
+        this.sy = 1;  
+    }
+
+    var powerups = [];
+    var max_powerups = 1;
+    var powerup_timer_max = seconds_to_frames(20);
+    var powerup_timer = powerup_timer_max;
+    function Powerup() {
+        this.w = 32;
+        this.h = 32;
+        this.x = (Math.random() * canvas.width - this.w);
+        this.y = (Math.random() * canvas.height - this.h);
+        this.type = ((Math.floor(Math.random() * 10)) >= 9) ? 0 : 1;
+    }
+
+    // Images
+
+    var img_c_idle = new Image();
+    var img_c_crouch = new Image();
+    var img_c_front_walk_1 = new Image();
+    var img_c_front_walk_2 = new Image();
+    var img_c_right_walk_1 = new Image();
+    var img_c_right_walk_2 = new Image();
+    var img_c_left_walk_1 = new Image();
+    var img_c_left_walk_2 = new Image();
+    var img_c_gameover = new Image();
+
+    img_c_idle.src = 'c_front_idle.png';
+    img_c_crouch.src = 'c_front_crouch.png';
+    img_c_front_walk_1.src = 'c_front_walk_1.png';
+    img_c_front_walk_2.src = 'c_front_walk_2.png';
+    img_c_right_walk_1.src = 'c_right_walk_1.png';
+    img_c_right_walk_2.src = 'c_right_walk_2.png';
+    img_c_left_walk_1.src = 'c_left_walk_1.png';
+    img_c_left_walk_2.src = 'c_left_walk_2.png';
+    img_c_gameover.src = 'c_gameover.png';
+
+    var img_d_idle = new Image();
+    var img_d_right_walk_1 = new Image();
+    var img_d_right_walk_2 = new Image();
+    var img_d_left_walk_1 = new Image();
+    var img_d_left_walk_2 = new Image();
+
+    img_d_idle.src = 'd_idle.png';
+    img_d_right_walk_1.src = 'd_right_walk_1.png';
+    img_d_right_walk_2.src = 'd_right_walk_2.png';
+    img_d_left_walk_1.src = 'd_left_walk_1.png';
+    img_d_left_walk_2.src = 'd_left_walk_2.png';
+
+    var img_e_idle_1 = new Image();
+    var img_e_idle_2 = new Image();
+
+    img_e_idle_1.src = 'e_idle_1.png';
+    img_e_idle_2.src = 'e_idle_2.png';
+
+    var img_p_apple = new Image();
+    var img_p_pan = new Image();
+    var img_p_pan_overlay = new Image();
+
+    img_p_apple.src = 'p_apple.png';
+    img_p_pan.src = 'p_pan.png';
+    img_p_pan_overlay.src = 'p_pan_overlay.png';
+
+    // Sounds
+
+    var snd_bg = new Audio("bg.mp3");
+    var snd_bark = new Audio("snd_bark.wav");
+    var snd_powerup = new Audio("snd_powerup.wav");
+    var snd_pan = new Audio("snd_pan.wav");
+    var snd_apple = new Audio("snd_apple.wav");
+    var snd_lose = new Audio("snd_lose.mp3");
+    var snd_enemy = new Audio("snd_enemy.wav");
+    var snd_die = new Audio("snd_die.wav");
+
+    snd_bg.loop = true;
+    snd_bg.volume = 0.5;
+    snd_bark.volume = .1;
+    snd_pan.volume = .2;
+    snd_apple.volume = .3;
+    snd_lose.volume = .1;
+    snd_enemy.volume = .3;
+    snd_die.volume = .3;
+    // Key Press Handlers
+
+    var press_left 	    = false; 
+    var press_up 	    = false;  
+    var press_right 	= false;  
+    var press_down  	= false;
+    var press_space 	= false; 
+
+
+    document.addEventListener("keydown", handlerKeyDown, false);
+    document.addEventListener("keyup",   handlerKeyUp,   false);
+
+    function handlerKeyDown(e) {
+        switch(e.keyCode) {
+            case 37:
+                press_left	= true;
+                break;
+            case 38:
+                press_up 	= true;
+                break;
+            case 39:
+                press_right = true;
+                break;
+            case 40:
+                press_down  = true;
+                break;
+            case 32:
+                press_space = true;
+                break;
+        }
+    }
+
+    function handlerKeyUp(e) {
+        switch(e.keyCode) {
+            case 37:
+                press_left 	= false;
+                break;
+            case 38:
+                press_up 	= false;
+                break;
+            case 39:
+                press_right = false;
+                break;
+            case 40:
+                press_down 	= false;
+                break;
+            case 32:
+                press_space = false;
+                break;
+        }
+    }
+
+
+
+    // Update
+
+    function update() {
+        if (start) {
+            collision_player();
+            collision_enemy();
+            collision_dogs();
+            update_player();
+            update_enemy();
+            update_dog();
+            update_powerups();
+        }
+    }
+        
+
+    function collision_player() {
+        for (var e = 0; e < enemys.length; e++) { 
+            if (collision(player.x, player.y, player.w, player.h,
+                enemys[e].x, enemys[e].y, enemys[e].w, enemys[e].h)) {
+                    player.pan--;
+                    enemys.splice(e, 1);
+                    score += 1000;
+
+                    snd_die.play();
+
+                    if (player.pan < 0) {
+                        score -= 1000;
+                        player.s = 0;
+                        snd_lose.play();
+                        snd_bg.pause();
+                        start = false;
+                        console.log("GAME OVER...");
+                    }
+            } 
+        }
+
+        for (var d = 0; d < dogs.length; d++) { 
+            if (collision(player.x, player.y, player.w, player.h,
+                dogs[d].x, dogs[d].y, dogs[d].w, dogs[d].h)) {
+                    dogs.splice(d, 1);
+                    pups++;
+                    score += 50;
+                    enemys[enemys.length-1].sx *= 1.15;
+                    enemys[enemys.length-1].sy *= 1.15;
+
+                    snd_bark.play();
+
+                    if (pups % 10 == 0) { max_enemys++; }
+                    if (pups % 15 == 0) { max_powerups++; }
+                    if (pups % 20 == 0) { max_dogs++; }
+            } 
+        }
+
+        for (var p = 0; p < powerups.length; p++) {
+            if (collision(player.x, player.y, player.w, player.h,
+                powerups[p].x, powerups[p].y, powerups[p].w, powerups[p].h)) {
+                    if (powerups[p].type == 0) {
+                        // Pan
+                        player.pan++;
+                        score += 250;
+                        snd_pan.play();
+                    } else {
+                        // Apple
+                        player.s *= 1.05;
+                        speed *= 2;
+                        score += 250;
+                        snd_apple.play();
+                    }
+                    powerups.splice(p, 1);
+                }
+        }
+    }
+
+    function collision_enemy() {
+        for (var e = 0; e < enemys.length; e++) { 
+            if (enemys[e].x + enemys[e].sx < 0) {
+                enemys[e].sx *= -1;
+            }
+
+            if (enemys[e].x + enemys[e].sx + enemys[e].w > canvas.width) {
+                enemys[e].sx *= -1;
+            }
+
+            if (enemys[e].y + enemys[e].sy < 0) {
+                enemys[e].sy *= -1;
+            }
+
+            if (enemys[e].y + enemys[e].sy + enemys[e].h > canvas.height) {
+                enemys[e].sy *= -1;
+            }
+        }
+    }
+
+    function collision_dogs() {
+        for (var d = 0; d < dogs.length; d++) {
+            if (dogs[d].x + dogs[d].s < 0) {
+                dogs[d].s *= -1;
+            }
+
+            if (dogs[d].x + dogs[d].s + dogs[d].w > canvas.width) {
+                dogs[d].s *= -1;
+            }
+        }
+    }
+
+    function update_player() {
+        if (press_left) {
+            player.x -= player.s
+        }
+
+        if (press_right) {
+            player.x += player.s
+        }
+
+        if (press_down) {
+            player.y += player.s
+        }
+
+        if (press_up) {
+            player.y -= player.s
+        }
+    }        
+
+    function update_enemy() {
+        while(enemys.length < max_enemys) {
+            enemys.push(new Enemy);
+            if (enemys.length > 1) {
+                snd_enemy.play();
+            }
+        }
+
+        for (var e = 0; e < enemys.length; e++) { 
+            enemys[e].x += enemys[e].sx;
+            enemys[e].y += enemys[e].sy;
+        }
+    }
+
+    function update_dog() {
+        while(dogs.length < max_dogs) {
+            dogs.push(new Dog);
+        }
+
+        for (var d = 0; d < dogs.length; d++) {
+            dogs[d].x += dogs[d].s;
+        }
+    }
+
+    function update_powerups() {
+        while(powerups.length < max_powerups && powerup_timer <= 0) {
+            powerups.push(new Powerup);
+            powerup_timer = powerup_timer_max;
+            console.log(powerups);
+            snd_powerup.play();
+        }
+
+        
+        powerup_timer--;
+    }
+
+    // Draw
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (start) {
+            draw_hud();
+            draw_player();
+            draw_enemy();
+            draw_dogs();
+            draw_powerups();
+        } else {
+            if (player.pan >= 0) {
+                screen_begin();
+            } else {
+                screen_gameover();
+            }
+        }
+    }
+
+    function draw_hud() {
+        ctx.font = "14px Arial";
+        ctx.fillStyle = "#777777";
+        ctx.textAlign = "center";
+        ctx.fillText((player.pan > 1 ? player.pan : ""), player.x + player.w  , player.y - 10);
+        ctx.fillText("Score: " + score, canvas.width/2, canvas.height - 20);
+
+        ctx.textAlign = "right";     
+        ctx.fillText("Pups Rescued: " + pups, canvas.width - 20, canvas.height - 20);
+
+        ctx.textAlign = "left";
+        ctx.fillText("Speed: " + speed + " mph", 20, canvas.height - 20);
+    }
+
+    function draw_player() {
+        player.anim--;
+
+        if (no_direction_press()) {
+            ctx.drawImage(img_c_idle, player.x, player.y);
+        } else if (press_up || press_down) {
+            if (player.anim >= 7) {
+                ctx.drawImage(img_c_front_walk_1, player.x, player.y);
+            } else {
+                ctx.drawImage(img_c_front_walk_2, player.x, player.y);
+            }
+        } else if (press_left) {
+            if (player.anim >= 7) {
+                ctx.drawImage(img_c_left_walk_1, player.x, player.y);
+            } else {
+                ctx.drawImage(img_c_left_walk_2, player.x, player.y);
+            }
+            
+        } else if (press_right) {
+            if (player.anim >= 7) {
+                ctx.drawImage(img_c_right_walk_1, player.x, player.y);
+            } else {
+                ctx.drawImage(img_c_right_walk_2, player.x, player.y);
+            }
+        }
+
+        if (player.pan > 0) {
+            ctx.drawImage(img_p_pan_overlay, player.x, player.y);
+        }
+
+
+        if (player.anim < 0) { 
+            player.anim = 15; 
+            score += 1;
+        }
+    }
+
+    function draw_enemy() {
+        for (var e = 0; e < enemys.length; e++) { 
+            if (player.anim >= 7) {
+                ctx.drawImage(img_e_idle_1, enemys[e].x, enemys[e].y);
+            } else {
+                ctx.drawImage(img_e_idle_2, enemys[e].x, enemys[e].y);
+            }
+        }
+    }
+
+    function draw_dogs() {
+        for (var d = 0; d < dogs.length; d++) {
+            if (dogs[d].s > 0) {
+                if (player.anim >= 7) {
+                    ctx.drawImage(img_d_right_walk_1, dogs[d].x, dogs[d].y);
+                } else {
+                    ctx.drawImage(img_d_right_walk_2, dogs[d].x, dogs[d].y);
+                }
+            } else {
+                if (player.anim >= 7) {
+                    ctx.drawImage(img_d_left_walk_1, dogs[d].x, dogs[d].y);
+                } else {
+                    ctx.drawImage(img_d_left_walk_2, dogs[d].x, dogs[d].y);
+                }
+            }
+        }
+    }
+
+    function draw_powerups() {
+        for (var p = 0; p < powerups.length; p++) {
+            if (powerups[p].type == 0) {
+                ctx.drawImage(img_p_pan, powerups[p].x, powerups[p].y);
+            } else {
+                ctx.drawImage(img_p_apple, powerups[p].x, powerups[p].y);
+            } 
+        }
+    }
+
+    // Screens
+
+    function screen_begin() {
+        ctx.font = "28px Arial";
+        ctx.fillStyle = "#777777";
+        ctx.textAlign = "center";
+        ctx.fillText("Puppy Panic!", canvas.width/2, canvas.height/2 - 100);
+        ctx.font = "14px Arial";
+        ctx.fillText("For Julie, Happy Anniversary!", canvas.width/2, canvas.height/2 - 140);
+        ctx.fillText("You must rescue the pups from the snappy crocodiles!", canvas.width/2, canvas.height/2 - 70);
+        ctx.fillText("Catch all the pups while avoiding the bouncing enemies!", canvas.width/2, canvas.height/2 - 50);
+
+        ctx.fillText("Use the [ARROW KEYS] to move your character.", canvas.width/2, canvas.height/2 + 100);
+        ctx.fillText("Pick up apples to gain speed!", canvas.width/2, canvas.height/2 + 140);
+        ctx.fillText("Pick up a frying pan to protect you from crocodile attacks!", canvas.width/2, canvas.height/2 + 120);
+        ctx.fillText("Press [SPACE] to start the game!", canvas.width/2, canvas.height/2 + 160);
+
+        ctx.drawImage(img_c_idle, canvas.width/2 - (player.w), canvas.height/2 - (player.h));
+
+        if (press_space) {
+            start = true;
+            reset();
+            snd_bg.play();
+        }
+    }
+
+    function screen_gameover() {
+        ctx.font = "28px Arial";
+        ctx.fillStyle = "#777777";
+        ctx.textAlign = "center";
+        ctx.fillText("Game Over!", canvas.width/2, canvas.height/2 - 100);
+
+        ctx.font = "14px Arial";
+        ctx.fillText("Final Speed: " + speed + " mph", canvas.width/2, canvas.height/2 - 70);
+        ctx.fillText("Pups Rescued: " + pups, canvas.width/2, canvas.height/2 - 50);
+
+        ctx.font = "28px Arial";
+        ctx.fillText("Score: " + score, canvas.width/2, canvas.height/2 + 100);
+
+        ctx.font = "14px Arial";
+        ctx.fillText("Press [SPACE] to try again!", canvas.width/2, canvas.height/2 + 140);
+
+        ctx.drawImage(img_c_gameover, canvas.width/2 - (player.w), canvas.height/2 - (player.h));
+
+        if (press_space) {
+            start = true;
+            reset();
+            snd_bg.play();
+        }
+    }
+
+    // Main Loop
+    
+    function main() {
+        update();
+        draw();
+    }
+    
+    
+    setInterval(main, FPS);
+    
+
+</script>
+
